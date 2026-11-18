@@ -2,14 +2,34 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 
-from reservations.forms import ReservationUpdateForm
+from reservations.constants import RESERVATION_HOLDABLE_STATUSES
+from reservations.exceptions import ReservationError, ReservationNotFoundError
+from reservations.forms import ReservationHoldForm, ReservationUpdateForm
 from reservations.models import Reservation
 from reservations.services import ReservationLifecycleService, ReservationUpdateService
 from shared.mixins import AuthenticatedPermissionRequiredMixin
+
+
+def _detail_context(
+    *,
+    request: HttpRequest,
+    reservation: Reservation,
+    hold_form: ReservationHoldForm | None = None,
+) -> dict:
+    can_hold = (
+        request.user.has_perm("reservations.hold_reservation")
+        and reservation.status in RESERVATION_HOLDABLE_STATUSES
+    )
+    return {
+        "reservation": reservation,
+        "can_change": request.user.has_perm("reservations.change_reservation"),
+        "can_hold": can_hold,
+        "hold_form": hold_form or ReservationHoldForm(),
+    }
 
 
 class ReservationListView(LoginRequiredMixin, AuthenticatedPermissionRequiredMixin, View):
@@ -37,10 +57,7 @@ class ReservationDetailView(
         return render(
             request,
             "reservations/detail.html",
-            {
-                "reservation": reservation,
-                "can_change": request.user.has_perm("reservations.change_reservation"),
-            },
+            _detail_context(request=request, reservation=reservation),
         )
 
 
@@ -91,4 +108,36 @@ class ReservationConfirmView(
             actor_id=request.user.id,
         )
         messages.success(request, "Reserva confirmada.")
+        return redirect("reservation_detail", pk=pk)
+
+
+class ReservationHoldView(LoginRequiredMixin, AuthenticatedPermissionRequiredMixin, View):
+    permission_required = "reservations.hold_reservation"
+
+    def post(self, request: HttpRequest, pk) -> HttpResponse:
+        form = ReservationHoldForm(request.POST)
+        if not form.is_valid():
+            reservation = get_object_or_404(
+                Reservation.objects.select_related("customer__user", "room"),
+                pk=pk,
+            )
+            return render(
+                request,
+                "reservations/detail.html",
+                _detail_context(request=request, reservation=reservation, hold_form=form),
+                status=422,
+            )
+
+        try:
+            ReservationLifecycleService().hold_reservation(
+                reservation_id=pk,
+                reason=form.cleaned_data["hold_reason"],
+                actor_id=request.user.id,
+            )
+        except ReservationNotFoundError as exc:
+            raise Http404(exc.detail) from exc
+        except ReservationError as exc:
+            messages.error(request, exc.detail)
+        else:
+            messages.success(request, "Reserva puesta en espera.")
         return redirect("reservation_detail", pk=pk)

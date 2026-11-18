@@ -1,5 +1,6 @@
 from django import forms
 
+from reservations.constants import RESERVATION_HOLD_REASON_MAX_LENGTH
 from reservations.models import Reservation
 
 
@@ -35,3 +36,11 @@ class ReservationUpdateForm(forms.ModelForm):
             )
 
         return cleaned_data
+
+
+class ReservationHoldForm(forms.Form):
+    hold_reason = forms.CharField(
+        label="Motivo",
+        max_length=RESERVATION_HOLD_REASON_MAX_LENGTH,
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
