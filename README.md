@@ -31,17 +31,17 @@ El contrato base del API está en [API_CONTRACT.md](./API_CONTRACT.md).
 
 ## Docker
 
-El starter **no incluye Dockerfile ni docker-compose** a propósito.
+```bash
+cp .env.example .env   # y completar DJANGO_SECRET_KEY
+docker compose up --build
+```
 
-Eso forma parte de la prueba. El candidato debe:
+- Mini app cliente: [http://localhost:8080](http://localhost:8080)
+- Backoffice: [http://localhost:8000/backoffice/reservations/](http://localhost:8000/backoffice/reservations/)
 
-- dockerizar el backend Django
-- dockerizar la mini app cliente
-- agregar un `docker-compose.yml`
-- documentar cómo correr todo con Docker
-
-La expectativa es un Dockerfile orientado a producción y no una imagen mínima
-hecha solo para pasar localmente.
+Detalle de imágenes, variables de entorno y decisiones en [DOCKER.md](./DOCKER.md).
+La mini app también se puede correr sin Docker: ver
+[client-app/README.md](./client-app/README.md).
 
 ## Setup
 
