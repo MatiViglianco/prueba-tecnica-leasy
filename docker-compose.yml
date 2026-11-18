@@ -1,0 +1,35 @@
+name: prueba-tecnica-leasy
+
+services:
+  backend:
+    build:
+      context: .
+    image: leasy-assessment-backend
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env (see .env.example)}
+      API_JWT_SECRET: ${API_JWT_SECRET:-}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+      DJANGO_SEED_DEMO_DATA: ${DJANGO_SEED_DEMO_DATA:-1}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  client:
+    build:
+      context: ./client-app
+    image: leasy-assessment-client
+    restart: unless-stopped
+    environment:
+      API_UPSTREAM: http://backend:8000
+    ports:
+      - "${CLIENT_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend-data:

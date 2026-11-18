@@ -9,3 +9,6 @@ dist/
 build/
 client-app/node_modules/
 client-app/dist/
+
+# Local secrets for docker compose
+.env
