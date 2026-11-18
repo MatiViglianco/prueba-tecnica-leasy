@@ -50,3 +50,60 @@ def test_reservation_list_is_scoped_to_customer(client):
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["id"] == str(own_reservation.id)
+
+
+PROBLEM_KEYS = {"type", "title", "status", "detail", "code", "instance", "errors"}
+
+
+def _assert_problem(response, *, status: int, code: str) -> dict:
+    assert response.status_code == status
+    payload = response.json()
+    assert set(payload) == PROBLEM_KEYS
+    assert payload["status"] == status
+    assert payload["code"] == code
+    assert payload["type"] == f"urn:assessment:problem:{code}"
+    assert payload["instance"] == response.wsgi_request.path
+    return payload
+
+
+@pytest.mark.django_db
+def test_login_with_wrong_password_returns_problem(client):
+    user = UserFactory(email="alice@example.com", username="alice", password="demo1234")
+    CustomerFactory(user=user)
+
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"email": "alice@example.com", "password": "wrong-password"},
+        content_type="application/json",
+    )
+
+    _assert_problem(response, status=401, code="auth_invalid_credentials")
+
+
+@pytest.mark.django_db
+def test_login_with_invalid_payload_returns_validation_problem(client):
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"email": "alice@example.com"},
+        content_type="application/json",
+    )
+
+    payload = _assert_problem(response, status=422, code="validation_error")
+    assert payload["errors"][0]["loc"][-1] == "password"
+
+
+@pytest.mark.django_db
+def test_me_without_token_returns_problem(client):
+    response = client.get("/api/v1/auth/me")
+
+    _assert_problem(response, status=401, code="auth_not_authenticated")
+
+
+@pytest.mark.django_db
+def test_me_with_invalid_token_returns_problem(client):
+    response = client.get(
+        "/api/v1/auth/me",
+        HTTP_AUTHORIZATION="Bearer not-a-valid-token",
+    )
+
+    _assert_problem(response, status=401, code="auth_invalid_token")

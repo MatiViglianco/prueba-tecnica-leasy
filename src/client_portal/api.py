@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 from ninja import NinjaAPI, Router
+from ninja.errors import AuthenticationError, HttpError, ValidationError
 from ninja.responses import Status
 
 from client_portal.schemas import (
@@ -26,18 +29,80 @@ FAMILY_HTTP = {
 }
 
 
+def _problem_response(
+    request,
+    *,
+    status: int,
+    code: str,
+    title: str,
+    detail: str,
+    errors: list[dict] | None = None,
+):
+    problem = ProblemDetailSchema.make(
+        request=request,
+        status=status,
+        code=code,
+        title=title,
+        detail=detail,
+        errors=errors,
+    )
+    return api.create_response(request, problem.model_dump(), status=status)
+
+
 @api.exception_handler(AppError)
 def handle_app_error(request, exc: AppError):
     status, title = FAMILY_HTTP.get(exc.family, FAMILY_HTTP["domain"])
-    problem = ProblemDetailSchema.make(
-        request=request,
+    return _problem_response(
+        request,
         status=status,
         code=exc.code,
         title=title,
         detail=exc.detail,
         errors=exc.errors,
     )
-    return api.create_response(request, problem.model_dump(), status=status)
+
+
+@api.exception_handler(ValidationError)
+def handle_validation_error(request, exc: ValidationError):
+    errors = [
+        {
+            "loc": [str(part) for part in error.get("loc", ())],
+            "msg": error.get("msg", ""),
+            "type": error.get("type", ""),
+        }
+        for error in exc.errors
+    ]
+    return _problem_response(
+        request,
+        status=422,
+        code="validation_error",
+        title="Validation Error",
+        detail="The request payload is invalid.",
+        errors=errors,
+    )
+
+
+@api.exception_handler(AuthenticationError)
+def handle_authentication_error(request, exc: AuthenticationError):
+    return _problem_response(
+        request,
+        status=401,
+        code="auth_not_authenticated",
+        title="Authentication Failed",
+        detail="Authentication credentials were not provided.",
+    )
+
+
+@api.exception_handler(HttpError)
+def handle_http_error(request, exc: HttpError):
+    status = exc.status_code
+    return _problem_response(
+        request,
+        status=status,
+        code=f"http_{status}",
+        title=HTTPStatus(status).phrase,
+        detail=str(exc),
+    )
 
 
 @auth_router.post(
