@@ -5,12 +5,15 @@ from uuid import UUID
 from django.db import transaction
 
 from reservations.constants import (
+    RESERVATION_CANCELLABLE_STATUSES,
     RESERVATION_HOLDABLE_STATUSES,
+    RESERVATION_STATUS_CANCELLED,
     RESERVATION_STATUS_CONFIRMED,
     RESERVATION_STATUS_ON_HOLD,
     RESERVATION_STATUS_REQUESTED,
 )
 from reservations.exceptions import (
+    ReservationCancelReasonRequiredError,
     ReservationHoldReasonRequiredError,
     ReservationNotFoundError,
     ReservationStatusTransitionError,
@@ -95,6 +98,29 @@ class ReservationLifecycleService:
         reservation.status = RESERVATION_STATUS_ON_HOLD
         reservation.hold_reason = reason
         reservation.save(update_fields=["status", "hold_reason", "updated_at"])
+        return reservation
+
+    @transaction.atomic
+    def cancel_reservation(
+        self,
+        *,
+        reservation_id: UUID,
+        reason: str,
+        actor_id: int | None = None,
+    ) -> Reservation:
+        _ = actor_id
+        reason = (reason or "").strip()
+        if not reason:
+            raise ReservationCancelReasonRequiredError()
+
+        reservation = self._get_reservation_for_update(reservation_id=reservation_id)
+
+        if reservation.status not in RESERVATION_CANCELLABLE_STATUSES:
+            raise ReservationStatusTransitionError()
+
+        reservation.status = RESERVATION_STATUS_CANCELLED
+        reservation.cancel_reason = reason
+        reservation.save(update_fields=["status", "cancel_reason", "updated_at"])
         return reservation
 
     def _get_reservation_for_update(self, *, reservation_id: UUID) -> Reservation:

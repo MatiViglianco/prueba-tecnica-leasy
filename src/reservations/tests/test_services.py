@@ -9,6 +9,7 @@ from reservations.constants import (
     RESERVATION_STATUS_REQUESTED,
 )
 from reservations.exceptions import (
+    ReservationCancelReasonRequiredError,
     ReservationHoldReasonRequiredError,
     ReservationNotFoundError,
     ReservationStatusTransitionError,
@@ -94,3 +95,57 @@ def test_hold_reservation_raises_not_found_for_unknown_id():
             reservation_id=uuid.uuid4(),
             reason="Payment pending",
         )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "initial_status",
+    [
+        RESERVATION_STATUS_REQUESTED,
+        RESERVATION_STATUS_CONFIRMED,
+        RESERVATION_STATUS_ON_HOLD,
+    ],
+)
+def test_cancel_reservation_moves_cancellable_status_to_cancelled(initial_status):
+    reservation = ReservationFactory(status=initial_status)
+
+    ReservationLifecycleService().cancel_reservation(
+        reservation_id=reservation.id,
+        reason="  Plans changed  ",
+    )
+
+    reservation.refresh_from_db()
+    assert reservation.status == RESERVATION_STATUS_CANCELLED
+    assert reservation.cancel_reason == "Plans changed"
+
+
+@pytest.mark.django_db
+def test_cancel_reservation_rejects_already_cancelled():
+    reservation = ReservationFactory(
+        status=RESERVATION_STATUS_CANCELLED,
+        cancel_reason="Original reason",
+    )
+
+    with pytest.raises(ReservationStatusTransitionError):
+        ReservationLifecycleService().cancel_reservation(
+            reservation_id=reservation.id,
+            reason="Second attempt",
+        )
+
+    reservation.refresh_from_db()
+    assert reservation.cancel_reason == "Original reason"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("reason", ["", "   ", None])
+def test_cancel_reservation_requires_reason(reason):
+    reservation = ReservationFactory(status=RESERVATION_STATUS_REQUESTED)
+
+    with pytest.raises(ReservationCancelReasonRequiredError):
+        ReservationLifecycleService().cancel_reservation(
+            reservation_id=reservation.id,
+            reason=reason,
+        )
+
+    reservation.refresh_from_db()
+    assert reservation.status == RESERVATION_STATUS_REQUESTED
