@@ -69,6 +69,52 @@ Response `200`:
 ]
 ```
 
+### `POST /reservations/{reservation_id}/cancel`
+
+Cancela una reserva del cliente autenticado.
+
+Header:
+
+```text
+Authorization: Bearer <token>
+```
+
+Request:
+
+```json
+{
+  "reason": "Cambio de planes"
+}
+```
+
+`reason` es obligatorio, se recortan los espacios y debe tener entre 1 y 500
+caracteres.
+
+Response `200` (la reserva actualizada, mismo esquema que el listado):
+
+```json
+{
+  "id": "uuid",
+  "room_name": "Room A",
+  "status": "cancelled",
+  "starts_at": "2026-04-20T15:00:00-05:00",
+  "ends_at": "2026-04-20T17:00:00-05:00",
+  "cancel_reason": "Cambio de planes"
+}
+```
+
+Estados que se pueden cancelar: `requested`, `confirmed`, `on_hold`.
+
+Errores:
+
+| Status | `code` | Cuándo |
+|---|---|---|
+| 401 | `auth_not_authenticated` | Falta el header `Authorization`. |
+| 401 | `auth_invalid_token` | Token inválido o expirado. |
+| 404 | `reservation_not_found` | La reserva no existe o pertenece a otro cliente. |
+| 409 | `reservation_invalid_transition` | La reserva ya está en un estado que no se puede cancelar. |
+| 422 | `validation_error` | Falta `reason`, está vacío o el body es inválido. `errors` detalla los campos. |
+
 ## Error format
 
 Los errores de dominio y auth deben mantenerse en este formato:
@@ -87,3 +133,20 @@ Los errores de dominio y auth deben mantenerse en este formato:
 
 El endpoint de cancelación que debe construir el candidato debe seguir este
 mismo contrato.
+
+Los errores de validación del payload (`422`, `code: validation_error`) usan el
+mismo formato e incluyen el detalle por campo en `errors`:
+
+```json
+{
+  "type": "urn:assessment:problem:validation_error",
+  "title": "Validation Error",
+  "status": 422,
+  "detail": "The request payload is invalid.",
+  "code": "validation_error",
+  "instance": "/api/v1/reservations/<id>/cancel",
+  "errors": [
+    {"loc": ["body", "payload", "reason"], "msg": "Field required", "type": "missing"}
+  ]
+}
+```
