@@ -188,3 +188,17 @@ def test_list_reflects_on_hold_status(client):
     response = client.get(reverse("reservation_list"))
 
     assert "On hold" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_confirm_invalid_transition_shows_error_instead_of_500(client):
+    reservation = ReservationFactory(status=RESERVATION_STATUS_CANCELLED)
+    client.force_login(_staff_user("view_reservation", "change_reservation"))
+
+    response = client.post(reverse("reservation_confirm", args=[reservation.id]))
+
+    assert response.status_code == 302
+    messages = [str(message) for message in get_messages(response.wsgi_request)]
+    assert messages == ["Reservation cannot transition from its current status."]
+    reservation.refresh_from_db()
+    assert reservation.status == RESERVATION_STATUS_CANCELLED

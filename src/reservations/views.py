@@ -103,11 +103,17 @@ class ReservationConfirmView(
     permission_required = "reservations.change_reservation"
 
     def post(self, request: HttpRequest, pk) -> HttpResponse:
-        ReservationLifecycleService().confirm_reservation(
-            reservation_id=pk,
-            actor_id=request.user.id,
-        )
-        messages.success(request, "Reserva confirmada.")
+        try:
+            ReservationLifecycleService().confirm_reservation(
+                reservation_id=pk,
+                actor_id=request.user.id,
+            )
+        except ReservationNotFoundError as exc:
+            raise Http404(exc.detail) from exc
+        except ReservationError as exc:
+            messages.error(request, exc.detail)
+        else:
+            messages.success(request, "Reserva confirmada.")
         return redirect("reservation_detail", pk=pk)
 
 
